@@ -1,0 +1,1319 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D Obsidian Notes Network</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        obsidian: {
+                            bg: '#09090e',
+                            panel: '#111119',
+                            card: '#161622',
+                            border: '#232336',
+                            accent: '#7a5af8',
+                            accentHover: '#9277ff',
+                            text: '#94a3b8',
+                            bright: '#f8fafc'
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Marked.js for Markdown Rendering -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <!-- Three.js + OrbitControls -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #09090e;
+            color: #f8fafc;
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
+            user-select: none;
+        }
+
+        .glass-panel {
+            background: rgba(17, 17, 25, 0.92);
+            backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            box-shadow: 0 16px 40px rgba(0, 0, 0, 0.6);
+        }
+
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: rgba(9, 9, 14, 0.6); }
+        ::-webkit-scrollbar-thumb { background: rgba(122, 90, 248, 0.4); border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: rgba(122, 90, 248, 0.8); }
+
+        .wikilink-item:hover {
+            background-color: rgba(122, 90, 248, 0.25);
+        }
+
+        #gizmo-container {
+            width: 90px;
+            height: 90px;
+            position: absolute;
+            top: 16px;
+            right: 16px;
+            pointer-events: none;
+        }
+
+        .toast-notify {
+            animation: fadeInOut 2.5s ease-in-out forwards;
+        }
+        @keyframes fadeInOut {
+            0% { opacity: 0; transform: translateY(10px); }
+            15% { opacity: 1; transform: translateY(0); }
+            85% { opacity: 1; transform: translateY(0); }
+            100% { opacity: 0; transform: translateY(-10px); }
+        }
+    </style>
+</head>
+<body class="w-screen h-screen overflow-hidden flex flex-col">
+
+    <!-- TOP CONTROL BAR -->
+    <header class="h-14 border-b border-obsidian-border bg-obsidian-bg/90 backdrop-blur px-4 flex items-center justify-between z-10 select-none">
+        <div class="flex items-center gap-3">
+            <div class="w-8 h-8 rounded-lg bg-obsidian-accent/20 border border-obsidian-accent flex items-center justify-center text-obsidian-accent font-bold">
+                <i class="fa-solid fa-cube text-lg"></i>
+            </div>
+            <div>
+                <h1 class="text-sm font-semibold tracking-wide text-obsidian-bright flex items-center gap-2">
+                    Obsidian 3D Graph <span class="text-[10px] font-normal px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">Directed Arrows & Blender Controls</span>
+                </h1>
+            </div>
+        </div>
+
+        <!-- Status Badges -->
+        <div class="flex items-center gap-2 text-xs">
+            <div id="mode-badge" class="px-3 py-1 rounded-full bg-obsidian-panel border border-obsidian-border text-obsidian-text font-mono flex items-center gap-2">
+                <span id="physics-indicator" class="w-2 h-2 rounded-full bg-amber-500"></span>
+                <span id="mode-text">LAYOUT: MANUAL DRAG</span>
+            </div>
+            <div id="camera-badge" class="px-3 py-1 rounded-full bg-obsidian-panel border border-obsidian-border text-sky-400 font-mono">
+                CAM: <span id="camera-proj-text">PERSPECTIVE</span>
+            </div>
+            <div id="stats-badge" class="hidden sm:flex px-3 py-1 rounded-full bg-obsidian-panel border border-obsidian-border text-obsidian-text font-mono gap-3">
+                <span>Notes: <b id="stat-notes-count" class="text-obsidian-bright">0</b></span>
+                <span>Links: <b id="stat-links-count" class="text-obsidian-bright">0</b></span>
+            </div>
+        </div>
+
+        <!-- Action Buttons -->
+        <div class="flex items-center gap-2">
+            <button id="btn-toggle-physics" title="Toggle Auto Force Layout" class="px-3 py-1.5 rounded-lg bg-obsidian-panel hover:bg-obsidian-border text-obsidian-bright text-xs border border-obsidian-border transition flex items-center gap-1.5">
+                <i class="fa-solid fa-atom text-amber-400"></i> Auto Layout
+            </button>
+            <button id="btn-add-note" title="Add Note (Shift+A)" class="px-3 py-1.5 rounded-lg bg-obsidian-accent hover:bg-obsidian-accentHover text-white text-xs font-medium transition flex items-center gap-1.5 shadow-lg shadow-obsidian-accent/20">
+                <i class="fa-solid fa-plus"></i> New Note
+            </button>
+            <button id="btn-toggle-cheatsheet" title="Blender Controls Cheat Sheet" class="w-8 h-8 rounded-lg bg-obsidian-panel hover:bg-obsidian-border text-obsidian-text hover:text-white border border-obsidian-border transition flex items-center justify-center">
+                <i class="fa-solid fa-keyboard"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- MAIN VIEWPORT CONTAINER -->
+    <div class="flex-1 relative overflow-hidden flex">
+        
+        <!-- CANVAS CONTAINER -->
+        <div id="canvas-container" class="w-full h-full absolute inset-0 cursor-grab active:cursor-grabbing"></div>
+
+        <!-- VIEWPORT GIZMO / AXIS NAVIGATOR -->
+        <div id="gizmo-container"></div>
+
+        <!-- LEFT SIDEBAR / SEARCH & LIST -->
+        <aside id="sidebar" class="w-80 h-full glass-panel border-r border-obsidian-border z-10 flex flex-col transition-transform duration-300 transform translate-x-0 relative">
+            <button id="toggle-sidebar-btn" class="absolute -right-3 top-4 w-6 h-12 bg-obsidian-panel border border-obsidian-border rounded-r-md flex items-center justify-center text-obsidian-text hover:text-white text-xs cursor-pointer z-20">
+                <i class="fa-solid fa-chevron-left" id="sidebar-icon"></i>
+            </button>
+
+            <div class="p-4 border-b border-obsidian-border flex flex-col gap-3">
+                <div class="relative">
+                    <i class="fa-solid fa-magnifying-glass absolute left-3 top-2.5 text-xs text-obsidian-text"></i>
+                    <input type="text" id="search-input" placeholder="Search notes or text..." class="w-full bg-obsidian-bg/80 border border-obsidian-border rounded-lg pl-8 pr-3 py-1.5 text-xs text-obsidian-bright placeholder-obsidian-text focus:outline-none focus:border-obsidian-accent transition">
+                </div>
+                <div class="flex flex-wrap gap-1.5" id="tag-filters-container"></div>
+            </div>
+
+            <div class="flex-1 overflow-y-auto p-3 space-y-1.5" id="notes-list-container"></div>
+
+            <div class="p-4 border-t border-obsidian-border bg-obsidian-bg/40 text-xs space-y-3">
+                <div class="flex items-center justify-between text-obsidian-text font-semibold uppercase text-[10px] tracking-wider">
+                    <span>Viewport Helpers</span>
+                    <button id="btn-reset-cam" class="hover:text-obsidian-accent transition" title="Reset Camera View (Numpad 0)"><i class="fa-solid fa-video"></i> Reset Cam</button>
+                </div>
+                <div class="grid grid-cols-2 gap-2 text-obsidian-text text-[11px]">
+                    <label class="flex items-center gap-2 cursor-pointer">
+                        <input type="checkbox" id="chk-grid" checked class="accent-obsidian-accent rounded">
+                        <span>Floor Grid (Y=0)</span>
+                    </label>
+                    <label class="flex items-center gap-2 cursor-pointer">
+                        <input type="checkbox" id="chk-origin" checked class="accent-obsidian-accent rounded">
+                        <span>World Origin</span>
+                    </label>
+                </div>
+            </div>
+        </aside>
+
+        <!-- CHEAT SHEET MODAL -->
+        <div id="cheatsheet-modal" class="hidden absolute top-4 right-4 z-20 w-84 glass-panel rounded-xl border border-obsidian-border p-4 text-xs space-y-3 shadow-2xl">
+            <div class="flex items-center justify-between border-b border-obsidian-border pb-2">
+                <h3 class="font-bold text-obsidian-bright flex items-center gap-2">
+                    <i class="fa-solid fa-gamepad text-obsidian-accent"></i> Controls & Hotkeys
+                </h3>
+                <button id="close-cheatsheet" class="text-obsidian-text hover:text-white"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+
+            <div class="space-y-2 max-h-[70vh] overflow-y-auto pr-1">
+                <div class="text-[10px] font-bold text-obsidian-accent uppercase tracking-wider">Camera Navigation (Blender)</div>
+                <div class="grid grid-cols-2 gap-1 text-[11px]">
+                    <span class="text-obsidian-text">MMB Drag</span><span>Orbit / Rotate View</span>
+                    <span class="text-obsidian-text">Shift + MMB Drag</span><span>Pan Camera Plane</span>
+                    <span class="text-obsidian-text">Scroll Wheel</span><span>Zoom In / Out</span>
+                </div>
+
+                <div class="text-[10px] font-bold text-obsidian-accent uppercase tracking-wider pt-2 border-t border-obsidian-border/50">Node Interactions</div>
+                <div class="grid grid-cols-2 gap-1 text-[11px]">
+                    <span class="text-obsidian-text">Left Click Drag Node</span><span>Move Node Card</span>
+                    <span class="text-obsidian-text">Left Drag Edge Port</span><span>Connect Directed Edge</span>
+                    <span class="text-obsidian-text">Double Click / Tab</span><span>Edit Note Content</span>
+                    <span class="text-obsidian-text">X / Delete</span><span>Remove Node or Link</span>
+                </div>
+
+                <div class="text-[10px] font-bold text-obsidian-accent uppercase tracking-wider pt-2 border-t border-obsidian-border/50">Numpad Hotkeys</div>
+                <div class="grid grid-cols-2 gap-1 text-[11px]">
+                    <span class="text-obsidian-text">Numpad 1 / 3 / 7</span><span>Front / Right / Top View</span>
+                    <span class="text-obsidian-text">Numpad 5</span><span>Perspective / Ortho</span>
+                    <span class="text-obsidian-text">Numpad 0 / .</span><span>Reset / Focus Selected</span>
+                    <span class="text-obsidian-text">Shift + A</span><span>Create New Note</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- STABLE SIDE PANEL / MARKDOWN EDITOR -->
+        <div id="editor-modal" class="hidden absolute right-6 top-6 bottom-6 w-[480px] glass-panel rounded-2xl border border-obsidian-border flex flex-col z-30 shadow-2xl overflow-hidden">
+            <div class="h-12 border-b border-obsidian-border bg-obsidian-bg/90 px-4 flex items-center justify-between">
+                <div class="flex items-center gap-2 flex-1">
+                    <i class="fa-regular fa-file-lines text-obsidian-accent"></i>
+                    <input type="text" id="editor-title-input" class="bg-transparent font-semibold text-obsidian-bright text-sm focus:outline-none focus:border-b border-obsidian-accent w-full" placeholder="Note Title...">
+                </div>
+
+                <div class="flex items-center gap-2">
+                    <select id="editor-category-select" class="bg-obsidian-panel border border-obsidian-border text-xs rounded-md px-2 py-1 text-obsidian-bright focus:outline-none">
+                        <option value="Tech">Tech</option>
+                        <option value="Personal">Personal</option>
+                        <option value="Ideas">Ideas</option>
+                        <option value="Project">Project</option>
+                    </select>
+                    <button id="btn-close-editor" class="text-obsidian-text hover:text-white text-base px-1.5" title="Close (Esc)"><i class="fa-solid fa-xmark"></i></button>
+                </div>
+            </div>
+
+            <div class="p-4 flex-1 flex flex-col gap-2 relative overflow-hidden bg-obsidian-bg/40">
+                <div class="flex justify-between items-center text-[10px] font-bold uppercase text-obsidian-text tracking-wider">
+                    <span>Markdown Content</span>
+                    <span class="text-obsidian-accent">Use [[Note Title]] to link</span>
+                </div>
+                <textarea id="editor-textarea" class="w-full flex-1 bg-obsidian-bg/80 text-obsidian-bright font-mono text-xs p-3 rounded-lg border border-obsidian-border focus:outline-none focus:border-obsidian-accent resize-none leading-relaxed" placeholder="Type note content... Use [[WikiLink]] to auto-connect notes."></textarea>
+
+                <div id="wikilink-dropdown" class="hidden absolute left-8 bg-obsidian-panel border border-obsidian-accent rounded-lg shadow-xl z-50 max-h-40 overflow-y-auto w-64 text-xs"></div>
+
+                <div class="h-32 border-t border-obsidian-border pt-2 flex flex-col">
+                    <span class="text-[10px] uppercase font-bold text-obsidian-text mb-1">Live Preview</span>
+                    <div id="editor-preview" class="flex-1 bg-obsidian-bg/60 rounded p-2 text-xs overflow-y-auto text-obsidian-text"></div>
+                </div>
+            </div>
+
+            <div class="h-10 border-t border-obsidian-border bg-obsidian-bg/90 px-4 flex items-center justify-between text-xs text-obsidian-text">
+                <span>Drag disabled during edit</span>
+                <button id="btn-save-editor" class="px-3 py-1 bg-obsidian-accent hover:bg-obsidian-accentHover text-white rounded-md text-xs font-medium transition">
+                    Done
+                </button>
+            </div>
+        </div>
+
+        <div id="toast-container" class="absolute bottom-6 left-1/2 transform -translate-x-1/2 pointer-events-none z-40 flex flex-col gap-2"></div>
+    </div>
+
+    <script>
+        // =========================================================================
+        // 1. DATA & STATE MANAGEMENT
+        // =========================================================================
+        const CATEGORY_HEX = {
+            Tech: '#7a5af8',
+            Personal: '#38bdf8',
+            Ideas: '#f59e0b',
+            Project: '#10b981'
+        };
+
+        let notesData = [
+            { id: '1', title: 'Obsidian 3D', category: 'Tech', content: 'Welcome to 3D Obsidian Notes!\n\n- Left Drag cards in 3D\n- Drag ports (+) to create DIRECTED edges\n- [[Blender Navigation]] enabled\n- Connect to [[Graph Network]]', x: -14, y: 4, z: 0 },
+            { id: '2', title: 'Blender Navigation', category: 'Tech', content: 'Camera Navigation:\n\n- MMB Drag: Orbit / Rotate\n- Shift + MMB Drag: Pan\n- Scroll Wheel: Zoom\n- Numpad 1/3/7: View Align\n- Numpad 5: Perspective/Ortho', x: 14, y: 12, z: -4 },
+            { id: '3', title: 'Graph Network', category: 'Ideas', content: 'Directed Cable Connections:\n\n- Edge ports on 4 sides\n- Conical 3D arrows show flow\n- Pulsing energy particles along wires', x: 16, y: -6, z: 5 },
+            { id: '4', title: 'Markdown Engine', category: 'Project', content: 'Interactive Editor:\n\n- Type [[WikiLink]] to auto-link\n- Real-time card texture sync', x: -12, y: -12, z: -2 }
+        ];
+
+        let linksData = [
+            { id: 'l1', source: '1', sourcePort: 'right', target: '2', targetPort: 'left' },
+            { id: 'l2', source: '1', sourcePort: 'bottom', target: '3', targetPort: 'left' },
+            { id: 'l3', source: '3', sourcePort: 'bottom', target: '4', targetPort: 'right' }
+        ];
+
+        // Global State
+        let selectedNodeIds = new Set(['1']);
+        let selectedLinkId = null;
+        let activeEditorNodeId = null;
+        let isPhysicsEnabled = false;
+        let isEditing = false;
+        let activeFilterTag = null;
+
+        // Mouse Dragging States
+        let isDraggingNode = false;
+        let draggedNodeId = null;
+        const dragPlane = new THREE.Plane();
+        const planeIntersectPoint = new THREE.Vector3();
+
+        // Edge Port Cable Dragging State
+        let isDraggingPort = false;
+        let portDragStart = { nodeId: null, port: null, worldPos: new THREE.Vector3() };
+        let tempDragLineMesh = null;
+        let tempDragArrowCone = null;
+
+        // Camera States
+        let isOrthographic = false;
+
+        // =========================================================================
+        // 2. THREE.JS SCENE, CAMERAS, CONTROLS, ENVIRONMENT
+        // =========================================================================
+        const container = document.getElementById('canvas-container');
+
+        const scene = new THREE.Scene();
+        scene.fog = new THREE.FogExp2(0x09090e, 0.0035);
+
+        const aspect = container.clientWidth / container.clientHeight;
+        const perspCamera = new THREE.PerspectiveCamera(55, aspect, 0.1, 1000);
+        perspCamera.position.set(0, 15, 60);
+
+        const orthoFrustum = 35;
+        const orthoCamera = new THREE.OrthographicCamera(
+            -orthoFrustum * aspect, orthoFrustum * aspect,
+            orthoFrustum, -orthoFrustum,
+            0.1, 1000
+        );
+        orthoCamera.position.set(0, 15, 60);
+
+        let activeCamera = perspCamera;
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+        renderer.setSize(container.clientWidth, container.clientHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        renderer.setClearColor(0x09090e, 1);
+        container.appendChild(renderer.domElement);
+
+        // Blender-Style OrbitControls Configuration
+        const controls = new THREE.OrbitControls(activeCamera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.08;
+        controls.mouseButtons = {
+            LEFT: THREE.MOUSE.NONE,    // Reserved for node dragging & port cable creation
+            MIDDLE: THREE.MOUSE.ROTATE, // MMB Drag: Orbit Camera
+            RIGHT: THREE.MOUSE.PAN      // Right Drag or Shift+MMB Drag: Pan View
+        };
+        controls.listenToKeyEvents(window);
+
+        // Floor Grid (Y=0)
+        const floorGrid = new THREE.GridHelper(200, 50, 0x7a5af8, 0x1e1e2d);
+        floorGrid.position.y = 0;
+        scene.add(floorGrid);
+
+        // World Origin Marker at (0,0,0)
+        const originGroup = new THREE.Group();
+        originGroup.position.set(0, 0, 0);
+
+        const originSphereGeo = new THREE.SphereGeometry(0.8, 16, 16);
+        const originSphereMat = new THREE.MeshStandardMaterial({
+            color: 0x7a5af8,
+            emissive: 0x7a5af8,
+            emissiveIntensity: 0.8
+        });
+        originGroup.add(new THREE.Mesh(originSphereGeo, originSphereMat));
+
+        const axesHelper = new THREE.AxesHelper(6);
+        axesHelper.material.linewidth = 3;
+        originGroup.add(axesHelper);
+
+        scene.add(originGroup);
+
+        // Axis Gizmo Scene
+        const gizmoContainer = document.getElementById('gizmo-container');
+        const gizmoScene = new THREE.Scene();
+        const gizmoCamera = new THREE.OrthographicCamera(-2, 2, 2, -2, 0.1, 10);
+        gizmoCamera.position.set(0, 0, 5);
+        const gizmoRenderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
+        gizmoRenderer.setSize(90, 90);
+        gizmoContainer.appendChild(gizmoRenderer.domElement);
+        gizmoScene.add(new THREE.AxesHelper(1.2));
+
+        // Lighting
+        scene.add(new THREE.AmbientLight(0xffffff, 0.8));
+        const dirLight = new THREE.DirectionalLight(0xffffff, 0.7);
+        dirLight.position.set(30, 50, 40);
+        scene.add(dirLight);
+
+        // Scene Groups
+        const slatesGroup = new THREE.Group();
+        const linksGroup = new THREE.Group();
+        scene.add(slatesGroup);
+        scene.add(linksGroup);
+
+        const raycaster = new THREE.Raycaster();
+        const mouse = new THREE.Vector2();
+
+        // Mesh Caches
+        const slateMeshes = new Map();
+        const portMeshes = [];
+        const slateBoxMeshes = [];
+        let linkObjects = [];
+
+        // Dynamic Arrow Cones Geometry & Material Base
+        const arrowConeGeo = new THREE.ConeGeometry(0.5, 1.4, 12);
+        arrowConeGeo.rotateX(Math.PI / 2); // Orient along Z axis
+
+        // Particle System for Animated Edge Energy Flow
+        const particleCount = 120;
+        const particleGeo = new THREE.BufferGeometry();
+        const particlePos = new Float32Array(particleCount * 3);
+        particleGeo.setAttribute('position', new THREE.BufferAttribute(particlePos, 3));
+
+        const particleMat = new THREE.PointsMaterial({
+            color: 0xf59e0b,
+            size: 0.45,
+            transparent: true,
+            opacity: 0.9,
+            blending: THREE.AdditiveBlending
+        });
+
+        const energyParticles = new THREE.Points(particleGeo, particleMat);
+        scene.add(energyParticles);
+
+        // =========================================================================
+        // 3. CANVAS TEXTURE GENERATOR FOR CARD PANELS
+        // =========================================================================
+        const textureCache = new Map();
+
+        function createCardCanvasTexture(title, content, category, isSelected) {
+            const cacheKey = `${title}_${category}_${isSelected}_${content.substring(0, 30)}`;
+            if (textureCache.has(cacheKey)) return textureCache.get(cacheKey);
+
+            const canvas = document.createElement('canvas');
+            canvas.width = 512;
+            canvas.height = 320;
+            const ctx = canvas.getContext('2d');
+
+            const accentColor = CATEGORY_HEX[category] || '#7a5af8';
+
+            // Background
+            ctx.fillStyle = '#12121c';
+            ctx.beginPath();
+            ctx.roundRect(0, 0, 512, 320, 16);
+            ctx.fill();
+
+            // Border
+            ctx.strokeStyle = isSelected ? '#ffffff' : accentColor;
+            ctx.lineWidth = isSelected ? 10 : 4;
+            ctx.stroke();
+
+            // Header Bar
+            ctx.fillStyle = '#1a1a28';
+            ctx.beginPath();
+            ctx.roundRect(4, 4, 504, 64, [12, 12, 0, 0]);
+            ctx.fill();
+
+            // Dot
+            ctx.fillStyle = accentColor;
+            ctx.beginPath();
+            ctx.arc(32, 36, 12, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Title - Increased font size
+            ctx.fillStyle = '#f8fafc';
+            ctx.font = 'bold 30px Inter, system-ui, sans-serif';
+            ctx.textAlign = 'left';
+            ctx.textBaseline = 'middle';
+            const cleanTitle = title.length > 18 ? title.substring(0, 18) + '...' : title;
+            ctx.fillText(cleanTitle, 56, 36);
+
+            // Category Tag
+            ctx.fillStyle = accentColor + '33';
+            ctx.beginPath();
+            ctx.roundRect(370, 16, 126, 38, 8);
+            ctx.fill();
+            ctx.fillStyle = accentColor;
+            ctx.font = 'bold 14px Inter, sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillText(category.toUpperCase(), 433, 35);
+
+            // Body Text - Increased font size and line height
+            ctx.fillStyle = '#cbd5e1';
+            ctx.font = '22px Inter, system-ui, sans-serif';
+            ctx.textAlign = 'left';
+            ctx.textBaseline = 'top';
+
+            let plainText = content
+                .replace(/#+\s/g, '')
+                .replace(/\[\[(.*?)\]\]/g, '$1')
+                .replace(/\*\*(.*?)\*\*/g, '$1')
+                .replace(/- /g, '• ');
+
+            const lines = [];
+            const words = plainText.split(/\s+/);
+            let currentLine = '';
+
+            for (let word of words) {
+                let testLine = currentLine ? currentLine + ' ' + word : word;
+                if (ctx.measureText(testLine).width > 460) {
+                    lines.push(currentLine);
+                    currentLine = word;
+                    if (lines.length >= 6) break;
+                } else {
+                    currentLine = testLine;
+                }
+            }
+            if (currentLine && lines.length < 6) lines.push(currentLine);
+
+            let startY = 88;
+            lines.forEach(line => {
+                ctx.fillText(line, 24, startY);
+                startY += 34;
+            });
+
+            const texture = new THREE.CanvasTexture(canvas);
+            texture.needsUpdate = true;
+            textureCache.set(cacheKey, texture);
+            return texture;
+        }
+
+        // =========================================================================
+        // 4. 3D SLATE PANEL MESHES & EDGE PORTS
+        // =========================================================================
+        const CARD_WIDTH = 12;
+        const CARD_HEIGHT = 7.5;
+        const CARD_DEPTH = 0.4;
+
+        function createSlateMesh(node) {
+            const group = new THREE.Group();
+            group.position.set(node.x, node.y, node.z);
+            group.userData = { id: node.id };
+
+            const isSelected = selectedNodeIds.has(node.id);
+            const texture = createCardCanvasTexture(node.title, node.content, node.category, isSelected);
+
+            // Material with high roughness and 0 metalness to eliminate glare
+            const frontMat = new THREE.MeshStandardMaterial({
+                map: texture,
+                roughness: 1.0,
+                metalness: 0.0,
+                roughnessMap: null
+            });
+            const sideMat = new THREE.MeshStandardMaterial({
+                color: 0x12121c,
+                roughness: 1.0,
+                metalness: 0.0
+            });
+
+            const materials = [sideMat, sideMat, sideMat, sideMat, frontMat, sideMat];
+            const boxGeo = new THREE.BoxGeometry(CARD_WIDTH, CARD_HEIGHT, CARD_DEPTH);
+            const mesh = new THREE.Mesh(boxGeo, materials);
+            mesh.userData = { id: node.id, type: 'slateMesh' };
+            group.add(mesh);
+            slateBoxMeshes.push(mesh);
+
+            // Edge Connection Ports (+ Spheres)
+            const portPositions = {
+                top: new THREE.Vector3(0, CARD_HEIGHT / 2, 0),
+                bottom: new THREE.Vector3(0, -CARD_HEIGHT / 2, 0),
+                left: new THREE.Vector3(-CARD_WIDTH / 2, 0, 0),
+                right: new THREE.Vector3(CARD_WIDTH / 2, 0, 0)
+            };
+
+            const portGeo = new THREE.SphereGeometry(0.55, 16, 16);
+            const portMat = new THREE.MeshStandardMaterial({
+                color: 0xf59e0b,
+                emissive: 0xf59e0b,
+                emissiveIntensity: 0.8
+            });
+
+            Object.entries(portPositions).forEach(([portName, pos]) => {
+                const portMesh = new THREE.Mesh(portGeo, portMat.clone());
+                portMesh.position.copy(pos);
+                portMesh.userData = { nodeId: node.id, port: portName, type: 'portHandle' };
+                group.add(portMesh);
+                portMeshes.push(portMesh);
+            });
+
+            slatesGroup.add(group);
+            slateMeshes.set(node.id, group);
+        }
+
+        // Calculate world position of an edge port accurately
+        function getPortWorldPosition(nodeId, portName) {
+            const group = slateMeshes.get(nodeId);
+            if (!group) return new THREE.Vector3();
+
+            const halfW = CARD_WIDTH / 2;
+            const halfH = CARD_HEIGHT / 2;
+
+            let localOffset = new THREE.Vector3();
+            switch (portName) {
+                case 'top': localOffset.set(0, halfH, 0); break;
+                case 'bottom': localOffset.set(0, -halfH, 0); break;
+                case 'left': localOffset.set(-halfW, 0, 0); break;
+                case 'right': localOffset.set(halfW, 0, 0); break;
+                default: localOffset.set(0, 0, 0); break;
+            }
+
+            localOffset.applyQuaternion(group.quaternion);
+            return group.position.clone().add(localOffset);
+        }
+
+        function rebuildGraph3D() {
+            while (slatesGroup.children.length > 0) slatesGroup.remove(slatesGroup.children[0]);
+            while (linksGroup.children.length > 0) linksGroup.remove(linksGroup.children[0]);
+            slateMeshes.clear();
+            portMeshes.length = 0;
+            slateBoxMeshes.length = 0;
+            linkObjects = [];
+
+            notesData.forEach(node => createSlateMesh(node));
+
+            linksData.forEach(link => {
+                const srcPos = getPortWorldPosition(link.source, link.sourcePort || 'right');
+                const tgtPos = getPortWorldPosition(link.target, link.targetPort || 'left');
+
+                const midX = (srcPos.x + tgtPos.x) / 2;
+                const midY = (srcPos.y + tgtPos.y) / 2;
+                const midZ = (srcPos.z + tgtPos.z) / 2 + 3;
+                const curve = new THREE.QuadraticBezierCurve3(srcPos, new THREE.Vector3(midX, midY, midZ), tgtPos);
+
+                const tubeGeo = new THREE.TubeGeometry(curve, 32, 0.12, 8, false);
+
+                const isLinkSelected = selectedLinkId === link.id;
+                const tubeMat = new THREE.MeshStandardMaterial({
+                    color: isLinkSelected ? 0x38bdf8 : 0x7a5af8,
+                    emissive: isLinkSelected ? 0x38bdf8 : 0x5b36f5,
+                    emissiveIntensity: isLinkSelected ? 0.9 : 0.4,
+                    roughness: 0.3
+                });
+
+                const tubeMesh = new THREE.Mesh(tubeGeo, tubeMat);
+                tubeMesh.userData = { linkId: link.id, type: 'linkWire' };
+                linksGroup.add(tubeMesh);
+
+                // 3D Directional Arrow Cone
+                const coneMat = new THREE.MeshStandardMaterial({
+                    color: isLinkSelected ? 0x38bdf8 : 0xf59e0b,
+                    emissive: isLinkSelected ? 0x38bdf8 : 0xf59e0b,
+                    emissiveIntensity: 0.8
+                });
+                const arrowCone = new THREE.Mesh(arrowConeGeo, coneMat);
+
+                // Position cone at 75% along curve pointing towards target
+                const arrowParam = 0.75;
+                const arrowPos = curve.getPointAt(arrowParam);
+                const tangent = curve.getTangentAt(arrowParam).normalize();
+
+                arrowCone.position.copy(arrowPos);
+                arrowCone.lookAt(arrowPos.clone().add(tangent));
+                linksGroup.add(arrowCone);
+
+                linkObjects.push({
+                    linkId: link.id,
+                    sourceId: link.source,
+                    sourcePort: link.sourcePort || 'right',
+                    targetId: link.target,
+                    targetPort: link.targetPort || 'left',
+                    curve: curve,
+                    tubeMesh: tubeMesh,
+                    arrowCone: arrowCone
+                });
+            });
+
+            updateSidebarNoteList();
+            updateTagFilterButtons();
+            updateStatsCounters();
+        }
+
+        function updateGraphPositions() {
+            notesData.forEach(node => {
+                const group = slateMeshes.get(node.id);
+                if (group) {
+                    group.position.set(node.x, node.y, node.z);
+                    group.quaternion.copy(activeCamera.quaternion);
+                }
+            });
+
+            linkObjects.forEach(item => {
+                const srcPos = getPortWorldPosition(item.sourceId, item.sourcePort);
+                const tgtPos = getPortWorldPosition(item.targetId, item.targetPort);
+
+                const midX = (srcPos.x + tgtPos.x) / 2;
+                const midY = (srcPos.y + tgtPos.y) / 2;
+                const midZ = (srcPos.z + tgtPos.z) / 2 + 3;
+                
+                item.curve.v0.copy(srcPos);
+                item.curve.v1.set(midX, midY, midZ);
+                item.curve.v2.copy(tgtPos);
+
+                item.tubeMesh.geometry.dispose();
+                item.tubeMesh.geometry = new THREE.TubeGeometry(item.curve, 32, 0.12, 8, false);
+
+                const arrowParam = 0.75;
+                const arrowPos = item.curve.getPointAt(arrowParam);
+                const tangent = item.curve.getTangentAt(arrowParam).normalize();
+
+                item.arrowCone.position.copy(arrowPos);
+                item.arrowCone.lookAt(arrowPos.clone().add(tangent));
+            });
+
+            // Update Dynamic Energy Particles
+            if (linkObjects.length > 0) {
+                const time = Date.now() * 0.001;
+                const posAttr = energyParticles.geometry.attributes.position;
+                let particleIdx = 0;
+
+                linkObjects.forEach(item => {
+                    const countForThisLink = Math.floor(particleCount / linkObjects.length);
+                    for (let i = 0; i < countForThisLink; i++) {
+                        if (particleIdx >= particleCount) break;
+                        const t = ((time * 0.4 + (i / countForThisLink)) % 1.0);
+                        const pt = item.curve.getPointAt(t);
+                        posAttr.setXYZ(particleIdx, pt.x, pt.y, pt.z);
+                        particleIdx++;
+                    }
+                });
+                posAttr.needsUpdate = true;
+            }
+        }
+
+        // =========================================================================
+        // 5. BULLETPROOF 3D NODE DRAGGING & EDGE PORT CONNECTING
+        // =========================================================================
+
+        container.addEventListener('pointerdown', (e) => {
+            // Process Left Click (Button 0) for Nodes / Connections
+            if (e.button === 0) {
+                const rect = renderer.domElement.getBoundingClientRect();
+                mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+                mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+
+                raycaster.setFromCamera(mouse, activeCamera);
+
+                // 1. Check Port Handle Clicks (Start Edge Connection)
+                const portHits = raycaster.intersectObjects(portMeshes);
+                if (portHits.length > 0) {
+                    const hitPort = portHits[0].object;
+                    isDraggingPort = true;
+
+                    portDragStart = {
+                        nodeId: hitPort.userData.nodeId,
+                        port: hitPort.userData.port,
+                        worldPos: getPortWorldPosition(hitPort.userData.nodeId, hitPort.userData.port)
+                    };
+
+                    const curve = new THREE.QuadraticBezierCurve3(portDragStart.worldPos, portDragStart.worldPos, portDragStart.worldPos);
+                    const tubeGeo = new THREE.TubeGeometry(curve, 16, 0.12, 8, false);
+                    const tubeMat = new THREE.MeshStandardMaterial({ color: 0xf59e0b, emissive: 0xf59e0b, emissiveIntensity: 0.9 });
+                    tempDragLineMesh = new THREE.Mesh(tubeGeo, tubeMat);
+                    scene.add(tempDragLineMesh);
+
+                    const coneMat = new THREE.MeshStandardMaterial({ color: 0xf59e0b, emissive: 0xf59e0b, emissiveIntensity: 0.9 });
+                    tempDragArrowCone = new THREE.Mesh(arrowConeGeo, coneMat);
+                    scene.add(tempDragArrowCone);
+                    return;
+                }
+
+                // 2. Check Link Cable Clicks
+                const tubeMeshes = linkObjects.map(l => l.tubeMesh);
+                const lineHits = raycaster.intersectObjects(tubeMeshes);
+                if (lineHits.length > 0) {
+                    selectedLinkId = lineHits[0].object.userData.linkId;
+                    selectedNodeIds.clear();
+                    rebuildGraph3D();
+                    showToast("Directed edge cable selected. Press Delete or X to remove.");
+                    return;
+                }
+
+                // 3. Check Slate Card Clicks (Start Node Move)
+                const slateHits = raycaster.intersectObjects(slateBoxMeshes);
+                if (slateHits.length > 0) {
+                    const clickedId = slateHits[0].object.userData.id;
+                    selectedLinkId = null;
+
+                    if (e.shiftKey) {
+                        if (selectedNodeIds.has(clickedId)) selectedNodeIds.delete(clickedId);
+                        else selectedNodeIds.add(clickedId);
+                    } else {
+                        selectedNodeIds.clear();
+                        selectedNodeIds.add(clickedId);
+                    }
+
+                    isDraggingNode = true;
+                    draggedNodeId = clickedId;
+
+                    const targetNode = notesData.find(n => n.id === clickedId);
+                    if (targetNode) {
+                        const cameraDir = new THREE.Vector3();
+                        activeCamera.getWorldDirection(cameraDir);
+                        dragPlane.setFromNormalAndCoplanarPoint(cameraDir.negate(), new THREE.Vector3(targetNode.x, targetNode.y, targetNode.z));
+                    }
+
+                    rebuildGraph3D();
+                }
+            }
+        });
+
+        window.addEventListener('pointermove', (e) => {
+            const rect = renderer.domElement.getBoundingClientRect();
+            mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+            mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+
+            raycaster.setFromCamera(mouse, activeCamera);
+
+            // Handle Node Dragging along Drag Plane
+            if (isDraggingNode && draggedNodeId) {
+                if (raycaster.ray.intersectPlane(dragPlane, planeIntersectPoint)) {
+                    const targetNode = notesData.find(n => n.id === draggedNodeId);
+                    if (targetNode) {
+                        targetNode.x = planeIntersectPoint.x;
+                        targetNode.y = planeIntersectPoint.y;
+                        targetNode.z = planeIntersectPoint.z;
+                        updateGraphPositions();
+                    }
+                }
+                return;
+            }
+
+            // Handle Dynamic Port Connection Wire Drag
+            if (isDraggingPort && tempDragLineMesh) {
+                const cameraDir = new THREE.Vector3();
+                activeCamera.getWorldDirection(cameraDir);
+                const tempPlane = new THREE.Plane().setFromNormalAndCoplanarPoint(cameraDir.negate(), portDragStart.worldPos);
+
+                if (raycaster.ray.intersectPlane(tempPlane, planeIntersectPoint)) {
+                    const midX = (portDragStart.worldPos.x + planeIntersectPoint.x) / 2;
+                    const midY = (portDragStart.worldPos.y + planeIntersectPoint.y) / 2;
+                    const midZ = (portDragStart.worldPos.z + planeIntersectPoint.z) / 2 + 2;
+
+                    const curve = new THREE.QuadraticBezierCurve3(
+                        portDragStart.worldPos,
+                        new THREE.Vector3(midX, midY, midZ),
+                        planeIntersectPoint
+                    );
+
+                    tempDragLineMesh.geometry.dispose();
+                    tempDragLineMesh.geometry = new THREE.TubeGeometry(curve, 20, 0.12, 8, false);
+
+                    if (tempDragArrowCone) {
+                        const arrowPos = curve.getPointAt(0.8);
+                        const tangent = curve.getTangentAt(0.8).normalize();
+                        tempDragArrowCone.position.copy(arrowPos);
+                        tempDragArrowCone.lookAt(arrowPos.clone().add(tangent));
+                    }
+                }
+            }
+        });
+
+        window.addEventListener('pointerup', (e) => {
+            // Stop Node Drag
+            if (isDraggingNode) {
+                isDraggingNode = false;
+                draggedNodeId = null;
+            }
+
+            // Complete Edge Connection Drag
+            if (isDraggingPort) {
+                isDraggingPort = false;
+                if (tempDragLineMesh) {
+                    scene.remove(tempDragLineMesh);
+                    tempDragLineMesh = null;
+                }
+                if (tempDragArrowCone) {
+                    scene.remove(tempDragArrowCone);
+                    tempDragArrowCone = null;
+                }
+
+                const rect = renderer.domElement.getBoundingClientRect();
+                mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+                mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+
+                raycaster.setFromCamera(mouse, activeCamera);
+
+                // Check target port or target note
+                const portHits = raycaster.intersectObjects(portMeshes);
+                let targetNodeId = null;
+                let targetPortName = 'left';
+
+                if (portHits.length > 0) {
+                    targetNodeId = portHits[0].object.userData.nodeId;
+                    targetPortName = portHits[0].object.userData.port;
+                } else {
+                    const slateHits = raycaster.intersectObjects(slateBoxMeshes);
+                    if (slateHits.length > 0) targetNodeId = slateHits[0].object.userData.id;
+                }
+
+                if (targetNodeId && targetNodeId !== portDragStart.nodeId) {
+                    linksData.push({
+                        id: 'l_' + Date.now(),
+                        source: portDragStart.nodeId,
+                        sourcePort: portDragStart.port,
+                        target: targetNodeId,
+                        targetPort: targetPortName
+                    });
+
+                    rebuildGraph3D();
+                    showToast(`Created Directed Edge: ${portDragStart.port.toUpperCase()} -> ${targetPortName.toUpperCase()} port!`);
+                }
+            }
+        });
+
+        // Double Click Node to Edit
+        container.addEventListener('dblclick', (e) => {
+            if (e.button !== 0) return;
+            const rect = renderer.domElement.getBoundingClientRect();
+            mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+            mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+
+            raycaster.setFromCamera(mouse, activeCamera);
+            const intersects = raycaster.intersectObjects(slateBoxMeshes);
+            if (intersects.length > 0) {
+                openMarkdownEditor(intersects[0].object.userData.id);
+            }
+        });
+
+        // =========================================================================
+        // 6. BLENDER HOTKEYS & CAMERA VIEW PRESETS
+        // =========================================================================
+        function toggleCameraProjection() {
+            isOrthographic = !isOrthographic;
+            const prevPos = activeCamera.position.clone();
+            const prevTarget = controls.target.clone();
+
+            activeCamera = isOrthographic ? orthoCamera : perspCamera;
+            activeCamera.position.copy(prevPos);
+            controls.object = activeCamera;
+            controls.target.copy(prevTarget);
+            controls.update();
+
+            document.getElementById('camera-proj-text').innerText = isOrthographic ? "ORTHOGRAPHIC" : "PERSPECTIVE";
+            showToast(`Camera Mode: ${isOrthographic ? 'Orthographic' : 'Perspective'}`);
+        }
+
+        function setPresetCameraView(viewType) {
+            const target = controls.target;
+            const dist = activeCamera.position.distanceTo(target);
+
+            switch (viewType) {
+                case 'FRONT': activeCamera.position.set(target.x, target.y, target.z + dist); break;
+                case 'RIGHT': activeCamera.position.set(target.x + dist, target.y, target.z); break;
+                case 'TOP': activeCamera.position.set(target.x, target.y + dist, target.z + 0.001); break;
+                case 'FOCUS':
+                    if (selectedNodeIds.size > 0) {
+                        const firstId = Array.from(selectedNodeIds)[0];
+                        const targetNode = notesData.find(n => n.id === firstId);
+                        if (targetNode) {
+                            controls.target.set(targetNode.x, targetNode.y, targetNode.z);
+                            activeCamera.position.set(targetNode.x, targetNode.y + 4, targetNode.z + 30);
+                            showToast(`Focused on: ${targetNode.title}`);
+                        }
+                    }
+                    break;
+                case 'RESET':
+                    controls.target.set(0, 0, 0);
+                    activeCamera.position.set(0, 15, 60);
+                    showToast("Camera Reset");
+                    break;
+            }
+            controls.update();
+        }
+
+        window.addEventListener('keydown', (e) => {
+            // Strict text entry checking to allow normal arrow navigation, typing, and editing keys
+            if (
+                e.target.tagName === 'INPUT' ||
+                e.target.tagName === 'TEXTAREA' ||
+                e.target.isContentEditable ||
+                e.target.closest('#editor-modal')
+            ) {
+                if (e.key === 'Escape') closeMarkdownEditor();
+                return; // Early return to let input/textarea handle arrow keys, home/end, backspace, etc.
+            }
+
+            if (e.shiftKey && (e.key === 'A' || e.key === 'a')) {
+                e.preventDefault();
+                createNewNote();
+                return;
+            }
+
+            switch (e.key) {
+                case 'g': case 'G':
+                    if (selectedNodeIds.size > 0) showToast("Click and drag selected node to move!");
+                    break;
+                case 'Tab':
+                    e.preventDefault();
+                    if (selectedNodeIds.size > 0) openMarkdownEditor(Array.from(selectedNodeIds)[0]);
+                    break;
+                case 'Delete': case 'x': case 'X':
+                    deleteSelected();
+                    break;
+                case '1': case 'Numpad1': setPresetCameraView('FRONT'); break;
+                case '3': case 'Numpad3': setPresetCameraView('RIGHT'); break;
+                case '7': case 'Numpad7': setPresetCameraView('TOP'); break;
+                case '5': case 'Numpad5': toggleCameraProjection(); break;
+                case '0': case 'Numpad0': setPresetCameraView('RESET'); break;
+                case '.': case 'NumpadDecimal': setPresetCameraView('FOCUS'); break;
+            }
+        });
+
+        // =========================================================================
+        // 7. MARKDOWN EDITOR & WIKILINKS
+        // =========================================================================
+        const editorModal = document.getElementById('editor-modal');
+        const editorTitleInput = document.getElementById('editor-title-input');
+        const editorCategorySelect = document.getElementById('editor-category-select');
+        const editorTextarea = document.getElementById('editor-textarea');
+        const editorPreview = document.getElementById('editor-preview');
+        const wikilinkDropdown = document.getElementById('wikilink-dropdown');
+
+        function openMarkdownEditor(nodeId) {
+            const note = notesData.find(n => n.id === nodeId);
+            if (!note) return;
+
+            activeEditorNodeId = nodeId;
+            isEditing = true;
+
+            editorTitleInput.value = note.title;
+            editorCategorySelect.value = note.category;
+            editorTextarea.value = note.content;
+
+            renderMarkdownPreview();
+            editorModal.classList.remove('hidden');
+            editorTextarea.focus();
+        }
+
+        function closeMarkdownEditor() {
+            if (activeEditorNodeId) {
+                const note = notesData.find(n => n.id === activeEditorNodeId);
+                if (note) {
+                    note.title = editorTitleInput.value || 'Untitled';
+                    note.category = editorCategorySelect.value;
+                    note.content = editorTextarea.value;
+                    textureCache.clear();
+                    parseWikilinksAndConnect(note);
+                }
+            }
+            editorModal.classList.add('hidden');
+            activeEditorNodeId = null;
+            isEditing = false;
+            rebuildGraph3D();
+        }
+
+        function parseWikilinksAndConnect(sourceNode) {
+            const regex = /\[\[(.*?)\]\]/g;
+            let match;
+            while ((match = regex.exec(sourceNode.content)) !== null) {
+                const targetTitle = match[1].trim();
+                let targetNode = notesData.find(n => n.title.toLowerCase() === targetTitle.toLowerCase());
+
+                if (!targetNode && targetTitle.length > 0) {
+                    targetNode = {
+                        id: String(Date.now() + Math.random()),
+                        title: targetTitle,
+                        category: 'Ideas',
+                        content: `Auto-created note from [[${sourceNode.title}]].`,
+                        x: sourceNode.x + (Math.random() - 0.5) * 15,
+                        y: sourceNode.y + (Math.random() - 0.5) * 15,
+                        z: sourceNode.z + (Math.random() - 0.5) * 15
+                    };
+                    notesData.push(targetNode);
+                }
+
+                if (targetNode) {
+                    if (!linksData.some(l => (l.source === sourceNode.id && l.target === targetNode.id))) {
+                        linksData.push({ id: 'l_' + Date.now(), source: sourceNode.id, sourcePort: 'right', target: targetNode.id, targetPort: 'left' });
+                    }
+                }
+            }
+        }
+
+        function renderMarkdownPreview() {
+            let content = editorTextarea.value;
+            content = content.replace(/\[\[(.*?)\]\]/g, '<span class="text-obsidian-accent font-semibold">[[ $1 ]]</span>');
+            editorPreview.innerHTML = marked.parse(content);
+        }
+
+        editorTextarea.addEventListener('input', () => {
+            renderMarkdownPreview();
+            handleWikilinkAutocomplete();
+
+            if (activeEditorNodeId) {
+                const note = notesData.find(n => n.id === activeEditorNodeId);
+                if (note) {
+                    note.title = editorTitleInput.value;
+                    note.content = editorTextarea.value;
+                    textureCache.clear();
+                    rebuildGraph3D();
+                }
+            }
+        });
+
+        function handleWikilinkAutocomplete() {
+            const cursorStart = editorTextarea.selectionStart;
+            const text = editorTextarea.value.substring(0, cursorStart);
+            const lastBracket = text.lastIndexOf('[[');
+
+            if (lastBracket !== -1 && !text.includes(']]', lastBracket)) {
+                const query = text.substring(lastBracket + 2).toLowerCase();
+                const matches = notesData.filter(n => n.title.toLowerCase().includes(query) && n.id !== activeEditorNodeId);
+
+                if (matches.length > 0) {
+                    wikilinkDropdown.innerHTML = matches.map(n => `
+                        <div class="wikilink-item p-2 cursor-pointer border-b border-obsidian-border/40 flex items-center justify-between" onclick="insertWikilink('${n.title.replace(/'/g, "\\'")}')">
+                            <span class="font-medium text-obsidian-bright">${n.title}</span>
+                            <span class="text-[10px] px-1.5 py-0.5 rounded" style="background:${CATEGORY_HEX[n.category]}20; color:${CATEGORY_HEX[n.category]}">${n.category}</span>
+                        </div>
+                    `).join('');
+                    wikilinkDropdown.classList.remove('hidden');
+                    return;
+                }
+            }
+            wikilinkDropdown.classList.add('hidden');
+        }
+
+        window.insertWikilink = function(title) {
+            const cursorStart = editorTextarea.selectionStart;
+            const text = editorTextarea.value;
+            const lastBracket = text.substring(0, cursorStart).lastIndexOf('[[');
+            if (lastBracket !== -1) {
+                editorTextarea.value = text.substring(0, lastBracket) + `[[${title}]]` + text.substring(cursorStart);
+                wikilinkDropdown.classList.add('hidden');
+                renderMarkdownPreview();
+                editorTextarea.focus();
+            }
+        };
+
+        document.getElementById('btn-close-editor').addEventListener('click', closeMarkdownEditor);
+        document.getElementById('btn-save-editor').addEventListener('click', closeMarkdownEditor);
+
+        // =========================================================================
+        // 8. ACTIONS & UI LISTENERS
+        // =========================================================================
+        function createNewNote() {
+            const newId = String(Date.now());
+            const newNote = {
+                id: newId,
+                title: `Note ${notesData.length + 1}`,
+                category: 'Ideas',
+                content: 'New node content.\n\nType [[WikiLink]] to link notes.',
+                x: (Math.random() - 0.5) * 15,
+                y: (Math.random() - 0.5) * 15 + 5,
+                z: (Math.random() - 0.5) * 10
+            };
+
+            notesData.push(newNote);
+            selectedNodeIds.clear();
+            selectedNodeIds.add(newId);
+            rebuildGraph3D();
+            showToast("Created New Note! Press Tab or Double Click to edit.");
+        }
+
+        function deleteSelected() {
+            if (selectedLinkId) {
+                linksData = linksData.filter(l => l.id !== selectedLinkId);
+                selectedLinkId = null;
+                rebuildGraph3D();
+                showToast("Directed Edge Cable Deleted");
+                return;
+            }
+
+            if (selectedNodeIds.size > 0) {
+                notesData = notesData.filter(n => !selectedNodeIds.has(n.id));
+                linksData = linksData.filter(l => !selectedNodeIds.has(l.source) && !selectedNodeIds.has(l.target));
+                selectedNodeIds.clear();
+                rebuildGraph3D();
+                showToast("Note Card Deleted");
+            }
+        }
+
+        // Auto Physics Layout Toggle
+        document.getElementById('btn-toggle-physics').addEventListener('click', () => {
+            isPhysicsEnabled = !isPhysicsEnabled;
+            document.getElementById('physics-indicator').className = isPhysicsEnabled ? "w-2 h-2 rounded-full bg-green-500 animate-pulse" : "w-2 h-2 rounded-full bg-amber-500";
+            document.getElementById('mode-text').innerText = isPhysicsEnabled ? "LAYOUT: AUTO PHYSICS" : "LAYOUT: MANUAL DRAG";
+            showToast(`Layout Mode: ${isPhysicsEnabled ? 'Auto Physics' : 'Manual Drag'}`);
+        });
+
+        document.getElementById('chk-grid').addEventListener('change', (e) => { floorGrid.visible = e.target.checked; });
+        document.getElementById('chk-origin').addEventListener('change', (e) => { originGroup.visible = e.target.checked; });
+
+        function updateSidebarNoteList() {
+            const container = document.getElementById('notes-list-container');
+            const searchVal = document.getElementById('search-input').value.toLowerCase();
+
+            const filtered = notesData.filter(n => {
+                const matchesSearch = n.title.toLowerCase().includes(searchVal) || n.content.toLowerCase().includes(searchVal);
+                const matchesTag = activeFilterTag ? n.category === activeFilterTag : true;
+                return matchesSearch && matchesTag;
+            });
+
+            container.innerHTML = filtered.map(n => {
+                const isSelected = selectedNodeIds.has(n.id);
+                return `
+                    <div class="p-2.5 rounded-lg border transition cursor-pointer flex items-center justify-between ${isSelected ? 'bg-obsidian-accent/20 border-obsidian-accent' : 'bg-obsidian-panel/60 border-obsidian-border hover:border-obsidian-accent/50'}"
+                         onclick="selectNodeFromSidebar('${n.id}')"
+                         ondblclick="openMarkdownEditor('${n.id}')">
+                        <div class="flex items-center gap-2 overflow-hidden">
+                            <span class="w-2.5 h-2.5 rounded-sm flex-shrink-0" style="background-color: ${CATEGORY_HEX[n.category]}"></span>
+                            <span class="text-xs font-medium text-obsidian-bright truncate">${n.title}</span>
+                        </div>
+                        <i class="fa-solid fa-chevron-right text-[10px] text-obsidian-text"></i>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        window.selectNodeFromSidebar = function(id) {
+            selectedNodeIds.clear();
+            selectedNodeIds.add(id);
+            selectedLinkId = null;
+            setPresetCameraView('FOCUS');
+            rebuildGraph3D();
+        };
+
+        function updateTagFilterButtons() {
+            const container = document.getElementById('tag-filters-container');
+            const categories = ['Tech', 'Personal', 'Ideas', 'Project'];
+
+            container.innerHTML = categories.map(cat => {
+                const isActive = activeFilterTag === cat;
+                return `
+                    <button class="px-2 py-0.5 rounded text-[10px] font-medium border transition ${isActive ? 'bg-obsidian-accent text-white border-obsidian-accent' : 'bg-obsidian-panel border-obsidian-border text-obsidian-text hover:text-white'}"
+                            onclick="toggleTagFilter('${cat}')">
+                        ${cat}
+                    </button>
+                `;
+            }).join('');
+        }
+
+        window.toggleTagFilter = function(category) {
+            activeFilterTag = activeFilterTag === category ? null : category;
+            updateTagFilterButtons();
+            updateSidebarNoteList();
+        };
+
+        function updateStatsCounters() {
+            document.getElementById('stat-notes-count').innerText = notesData.length;
+            document.getElementById('stat-links-count').innerText = linksData.length;
+        }
+
+        document.getElementById('search-input').addEventListener('input', updateSidebarNoteList);
+
+        const sidebar = document.getElementById('sidebar');
+        let isSidebarCollapsed = false;
+        document.getElementById('toggle-sidebar-btn').addEventListener('click', () => {
+            isSidebarCollapsed = !isSidebarCollapsed;
+            sidebar.classList.toggle('-translate-x-full', isSidebarCollapsed);
+            document.getElementById('sidebar-icon').className = isSidebarCollapsed ? 'fa-solid fa-chevron-right' : 'fa-solid fa-chevron-left';
+        });
+
+        document.getElementById('btn-add-note').addEventListener('click', createNewNote);
+        document.getElementById('btn-reset-cam').addEventListener('click', () => setPresetCameraView('RESET'));
+
+        const cheatsheetModal = document.getElementById('cheatsheet-modal');
+        document.getElementById('btn-toggle-cheatsheet').addEventListener('click', () => cheatsheetModal.classList.toggle('hidden'));
+        document.getElementById('close-cheatsheet').addEventListener('click', () => cheatsheetModal.classList.add('hidden'));
+
+        function showToast(message) {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            toast.className = 'toast-notify px-4 py-2 rounded-xl glass-panel border border-obsidian-accent/50 text-obsidian-bright text-xs shadow-2xl font-medium flex items-center gap-2';
+            toast.innerHTML = `<i class="fa-solid fa-circle-info text-obsidian-accent"></i> ${message}`;
+            container.appendChild(toast);
+            setTimeout(() => toast.remove(), 2500);
+        }
+
+        window.addEventListener('resize', () => {
+            const aspect = container.clientWidth / container.clientHeight;
+            perspCamera.aspect = aspect;
+            perspCamera.updateProjectionMatrix();
+
+            orthoCamera.left = -orthoFrustum * aspect;
+            orthoCamera.right = orthoFrustum * aspect;
+            orthoCamera.top = orthoFrustum;
+            orthoCamera.bottom = -orthoFrustum;
+            orthoCamera.updateProjectionMatrix();
+
+            renderer.setSize(container.clientWidth, container.clientHeight);
+        });
+
+        // Force-directed repulsion logic
+        function updatePhysics() {
+            if (!isPhysicsEnabled || isEditing || isDraggingNode || isDraggingPort) return;
+
+            notesData.forEach((n1, i) => {
+                notesData.forEach((n2, j) => {
+                    if (i >= j) return;
+                    let dx = n2.x - n1.x;
+                    let dy = n2.y - n1.y;
+                    let dz = n2.z - n1.z;
+                    let dist = Math.sqrt(dx * dx + dy * dy + dz * dz) + 0.1;
+                    if (dist < 40) {
+                        let force = (40 - dist) * 0.005;
+                        n1.x -= (dx / dist) * force;
+                        n1.y -= (dy / dist) * force;
+                        n1.z -= (dz / dist) * force;
+                        n2.x += (dx / dist) * force;
+                        n2.y += (dy / dist) * force;
+                        n2.z += (dz / dist) * force;
+                    }
+                });
+            });
+        }
+
+        // =========================================================================
+        // 9. ANIMATION LOOP
+        // =========================================================================
+        function animate() {
+            requestAnimationFrame(animate);
+
+            controls.update();
+            updatePhysics();
+            updateGraphPositions();
+
+            renderer.render(scene, activeCamera);
+
+            // Sync Axis Gizmo Camera
+            gizmoCamera.position.copy(activeCamera.position).sub(controls.target).setLength(5);
+            gizmoCamera.lookAt(0, 0, 0);
+            gizmoRenderer.render(gizmoScene, gizmoCamera);
+        }
+
+        window.onload = function() {
+            rebuildGraph3D();
+            animate();
+            showToast("Blender controls ready: MMB = Orbit, Shift+MMB = Pan, Scroll = Zoom!");
+        };
+    </script>
+</body>
+</html>
